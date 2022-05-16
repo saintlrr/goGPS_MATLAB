@@ -1182,7 +1182,7 @@ classdef GUI_Edit_Settings < GUI_Unique_Win
         
         function addCrdRow(this, caller, event)
             % Add a new row to the CRD table
-            this.coo_tbl.Data = [this.coo_tbl.Data; {'NAME', 0, 0, 0, Core_Reference_Frame.FLAG_STRING{1}, GPS_Time(0).toString('yyyy-mm-dd HH:MM:SS'), GPS_Time(datenum('2099/12/31')).toString('yyyy-mm-dd HH:MM:SS'), 0, 0, 0}];
+            this.coo_tbl.Data = [this.coo_tbl.Data; {'NAME', 0, 0, 0, Core_Reference_Frame.FLAG_STRING{1}, GPS_Time(0).toString('yyyy-mm-dd HH:MM:SS'), GPS_Time(datenum('2099/12/31')).toString('yyyy-mm-dd HH:MM:SS'), 0, 0, 0, 0, 0}];
         end
         
         function delCrd(this, caller, event)

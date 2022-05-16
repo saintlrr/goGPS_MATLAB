@@ -1424,7 +1424,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             inan = isnan(pr);
             pr_fill = simpleFill1D(pr, flagExpand(~inan, 5) &  inan);
             
-            pr_d3 = Core_Utils.diffAndPred(pr_fill,3);
+            pr_d3 = Core_Utils.diffAndPred(pr_fill,3); % interpolation and diff
             med_pr0 = median(pr_d3(:, id_ok), 2,'omitnan');
             out = flagExpand(abs(bsxfun(@minus, pr_d3, med_pr0)) > thr, 2); % flagExpand -> beeing conservative, I prefer to flag more
             pr_fill(out) = nan;
