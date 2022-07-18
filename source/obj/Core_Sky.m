@@ -53,6 +53,8 @@ classdef Core_Sky < handle
         poly_type              % 0: Center of Mass 1: Antenna Phase Center
         clock                  % clocks of ephemerides [times x num_sat]
         
+        clock_drift            % clock drifts of ephemerides [times x num_sat]
+        
         coord_rate = 900;
         clock_rate = 900;
         
@@ -261,6 +263,7 @@ classdef Core_Sky < handle
                         if isempty(end_time) || isempty(gps_time) ||  gps_time > end_time
                             this.addClk(clock_f_name{i});
                             this.clock = this.clock(1 : find(any(this.clock(:,:),2), 1, 'last'),:,:);
+                            this.clock_drift = Core_Utils.diffAndPred(zero2nan(this.clock));
                         end
                     end
                     
@@ -352,10 +355,12 @@ classdef Core_Sky < handle
                 if this.time_ref_clock < gps_date
                     n_ep = min(floor((gps_date - this.time_ref_clock)/this.clock_rate), size(this.clock,1));
                     this.clock(1:n_ep,:)=[];
+                    this.clock_drift(1:n_ep,:)=[];
                     this.time_ref_clock.addSeconds(n_ep*this.clock_rate);
                 end
             else
                 this.clock=[];
+                this.clock_drift = [];
                 this.time_ref_clock = [];
                 this.wsb = [];
                 this.wsb_date = [];
@@ -1135,9 +1140,9 @@ classdef Core_Sky < handle
                                 id_right(this.clock(id_right, i) == 0) = [];
                 
                                 % DEBUG: inspect re-alignment
-                                %figure(1000); clf; ax = axes;
-                                %plot(ax, this.time_ref_clock.getMatlabTime + ((id_left(1) : id_right(end)) - 1) / 2880, Core_Utils.V_LIGHT * diff(this.clock(id_left(1):id_right(end)+1,i))); hold on;
-                                %setTimeTicks
+%                                 figure(1000); clf; ax = axes;
+%                                 plot(ax, this.time_ref_clock.getMatlabTime + ((id_left(1) : id_right(end)) - 1) / 2880, Core_Utils.V_LIGHT * diff(this.clock(id_left(1):id_right(end)+1,i))); hold on;
+%                                 setTimeTicks
                                 
                                 if numel(id_right) > 3
                                     prediction_from_left = interp1(id_left, this.clock(id_left,i), c_ep_idx(1) + [-1 : 0], 'linear', 'extrap');
@@ -1157,11 +1162,11 @@ classdef Core_Sky < handle
                                 end
                                 
                                 % DEBUG: inspect re-alignment
-                                %plot(ax, this.time_ref_clock.getMatlabTime + ((id_left(1) : id_right(end)) - 1) / 2880, Core_Utils.V_LIGHT * diff(this.clock(id_left(1):id_right(end)+1,i))); hold on;
-                                %xlim(this.time_ref_clock.getMatlabTime + ([id_left(1) , id_right(end)] - 1) / 2880);
-                                %ylabel('clock drift [m]');
-                                %legend('clock error drift', 'clock error drift - re-aligned')
-                                %fh = gcf; Core_UI.addBeautifyMenu(fh); Core_UI.beautifyFig(fh, 'light');                                
+%                                 plot(ax, this.time_ref_clock.getMatlabTime + ((id_left(1) : id_right(end)) - 1) / 2880, Core_Utils.V_LIGHT * diff(this.clock(id_left(1):id_right(end)+1,i))); hold on;
+%                                 xlim(this.time_ref_clock.getMatlabTime + ([id_left(1) , id_right(end)] - 1) / 2880);
+%                                 ylabel('clock drift [m]');
+%                                 legend('clock error drift', 'clock error drift - re-aligned')
+%                                 fh = gcf; Core_UI.addBeautifyMenu(fh); Core_UI.beautifyFig(fh, 'light');                                
                             end
                             % check right
                             id_left = max(1, c_ep_idx(end) - buf_size + 1) : max(1, c_ep_idx(end));
@@ -1191,10 +1196,10 @@ classdef Core_Sky < handle
                 Core.getLogger.newLine(100);
                 
                 % Outlier detection
-                %d_clock = Core_Utils.diffAndPred(zero2nan(this.clock));
-                %d_clock = bsxfun(@minus, d_clock, median(d_clock, 'omitnan'));
-                %d_clock = bsxfun(@minus, d_clock, median(d_clock, 2, 'omitnan'));
-                %figure; plot(d_clock)
+%                 d_clock = Core_Utils.diffAndPred(zero2nan(this.clock));
+%                 d_clock = bsxfun(@minus, d_clock, median(d_clock, 'omitnan'));
+%                 d_clock = bsxfun(@minus, d_clock, median(d_clock, 2, 'omitnan'));
+%                 figure; plot(d_clock)
             end            
         end
         
@@ -1849,7 +1854,7 @@ classdef Core_Sky < handle
             pcv_delay = pco_delay - pcv_delay;
         end
 
-        function dts = getSatClock(this, gps_time, sat)
+        function [dts, ddts] = getSatClock(this, gps_time, sat)
             % Get the clock of the satellite "sat" e.g. G21
             %
             % SYNTAX
@@ -1857,9 +1862,9 @@ classdef Core_Sky < handle
             
             if nargin == 3
                 go_id_list = this.cc.getIndex(sat);
-                dts = this.clockInterpolate(gps_time, go_id_list);
+                [dts, ddts] = this.clockInterpolate(gps_time, go_id_list);
             else
-                dts = this.clockInterpolate(gps_time);
+                [dts, ddts]= this.clockInterpolate(gps_time);
             end
         end
         
@@ -1881,9 +1886,9 @@ classdef Core_Sky < handle
             end
         end
         
-        function [dts] = clockInterpolate(this, gps_time, sat_go_id)
+        function [dts, ddts] = clockInterpolate(this, gps_time, sat_go_id)
             % SYNTAX:
-            %   [dts] = clockInterpolate(time, sat);
+            %   [dts ddts] = clockInterpolate(time, sat);
             %
             % INPUT:
             %   time  = interpolation timespan GPS_Time
@@ -1891,6 +1896,7 @@ classdef Core_Sky < handle
             %
             % OUTPUT:
             %   dts  = interpolated clock correction
+            %   ddts = interpolated clock drift correction
             %
             % DESCRIPTION:
             %   SP3 (precise ephemeris) clock correction linear interpolation.
@@ -1899,6 +1905,7 @@ classdef Core_Sky < handle
             end
             
             dts = nan(gps_time.length, numel(sat_go_id));
+            ddts = nan(gps_time.length, numel(sat_go_id));
             for s = 1 : numel(sat_go_id)
                 sat = sat_go_id(s);
                 interval = this.clock_rate;
@@ -1928,20 +1935,24 @@ classdef Core_Sky < handle
                 b_pos_idx = b > 0;
                 p_pos = p(b_pos_idx);
                 SP3_c(b_pos_idx,:) = cat(2, this.clock(max(p_pos - 1,1), sat), this.clock(p_pos, sat));
+                SP3_dc(b_pos_idx,:) = cat(2, this.clock_drift(max(p_pos - 1,1), sat), this.clock_drift(p_pos, sat));
                 u(b_pos_idx) = 1 - b(b_pos_idx)/interval;
                 
                 b_neg_idx = not(b_pos_idx);
                 p_neg = p(b_neg_idx);
                 SP3_c( b_neg_idx,:) = cat(2, this.clock(p_neg,sat), this.clock(p_neg+1,sat));
+                SP3_dc( b_neg_idx,:) = cat(2, this.clock_drift(p_neg,sat), this.clock_drift(p_neg+1,sat));
                 u(b_neg_idx) = -b(b_neg_idx) / interval;
                 
                 dts_tmp = NaN * ones(size(SP3_c,1), size(SP3_c,2));
+                ddts_tmp = NaN * ones(size(SP3_c,1), size(SP3_c,2));
                 idx = (sum(nan2zero(SP3_c) ~= 0,2) == 2 .* ~any(SP3_c >= 0.999,2)) > 0;
                 
                 %t = this.getClockTime.getRefTime(round(gps_time.first.getMatlabTime));
                 data = this.clock(:, sat);
                 %[~, ~, ~, dts_tmp] = splinerMat(t(not(isnan(data))), data(not(isnan(data))), 300, 1e-10, gps_time.getRefTime(round(gps_time.first.getMatlabTime)));
                 dts_tmp = (1-u) .* SP3_c(:,1) + (u) .* SP3_c(:,2);
+                ddts_tmp = (1-u) .* SP3_dc(:,1) + (u) .* SP3_dc(:,2);
                 % detect anomalous clock jumps ( > 5 cm) if the clack have
                 % a rate of at least 5 minutes
                 if this.getClockTime.getRate >= 300
@@ -1953,11 +1964,13 @@ classdef Core_Sky < handle
                         if numel(id_ko_tmp) > 3
                             % This will force to split the system
                             dts_tmp(id_ko_tmp([2 end-1])) = NaN;
+                            ddts_tmp(id_ko_tmp([2 end-1])) = NaN;
                         end
                     end
                 end
                 clear data;
                 dts_tmp(not(idx)) = NaN;
+                ddts_tmp(not(idx)) = NaN;
                 
                 %             dt_S_SP3=NaN;
                 %             if (sum(SP3_c~=0) == 2 && ~any(SP3_c >= 0.999))
@@ -1971,8 +1984,10 @@ classdef Core_Sky < handle
                 end
                 if numel(sat_go_id) == 1
                     dts = dts_tmp(:);
+                    ddts = ddts_tmp(:);
                 else
                     dts(:,s) = dts_tmp(:);
+                    ddts(:,s) = ddts_tmp(:);
                 end
             end
             

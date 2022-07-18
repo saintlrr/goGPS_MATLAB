@@ -8,7 +8,7 @@
 %   trg = Receiver_Work_Space();
 %
 % FOR A LIST OF CONSTANTs and METHODS use doc Receiver
-
+% 
 %--------------------------------------------------------------------------
 %               ___ ___ ___
 %     __ _ ___ / __| _ | __|
@@ -83,8 +83,9 @@ classdef Receiver_Work_Space < Receiver_Commons
         obs_code       % obs code for each line of the data matrix obs
         aligned        % boolean field to check if the code has been aligned to the others , (i.e. DCB(external or estimated from network) applied
         obs            % huge observation matrix with all the observables for all the systems / frequencies / ecc ...
+        old_obs
         synt_ph        % syntetic phases
-        sat_cache      % cached range / sat_positions
+        sat_cache      % cached range / sat_positions / sat_velocity
         
         dop_kin        % dop matrix inberse of the normal builded for a sigle epoch [ x y z dt tropo]
         dop_tdt        % dop matrix inberse of the normal builded for a sigle epoch [dt tropo]
@@ -157,6 +158,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             'az',                  [], ...    % double  [n_epoch x n_sat] azimuth
             'el',                  [], ...    % double  [n_epoch x n_sat] elevation
             'dtS',                 [], ...    % double  [n_epoch x n_sat] staellite clok error at trasmission time
+            'ddtS',                [], ...    % double  [n_epoch x n_sat] staellite clok error drift at trasmission time
             'rel_clk_corr',        [], ...    % double  [n_epoch x n_sat] relativistic correction at trasmission time
             'cs',                  [], ...    % Core_Sky
             'XS_tx',               [], ...    % compute Satellite postion a t transmission time
@@ -201,9 +203,10 @@ classdef Receiver_Work_Space < Receiver_Commons
         function this = Receiver_Work_Space(parent)
             % SYNTAX  this = Receiver()
             
+            this.reset();
             this.parent = parent;
             this.rec_settings = Receiver_Settings();
-            this.reset();
+%             this.reset();
             
             cc = Core.getState.getConstellationCollector;
             this.loaded_sys = cc.getActiveSysChar;
@@ -240,6 +243,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             this.sat.err_iono          = [];
             this.sat.solid_earth_corr  = [];
             this.sat.dtS               = [];
+            this.sat.ddtS              = [];
             this.sat.rel_clk_corr      = [];
             this.sat.tot               = [];
             this.sat.az                = [];
@@ -299,6 +303,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             this.obs_code   = [];         % obs code for each line of the data matrix obs
             this.aligned    = [];         % pseudorange measurements aligned or not
             this.obs        = [];         % huge observation matrix with all the observables for all the systems / frequencies / ecc ...
+            this.old_obs    = [];
             
             this.ph_idx = [];
             this.if_amb = [];
@@ -331,6 +336,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                 this.obs_code   = [];         % obs code for each line of the data matrix obs
                 this.aligned    = [];         % alignement of the pseudorange measurements
                 this.obs        = [];         % huge observation matrix with all the observables for all the systems / frequencies / ecc ...
+                this.old_obs    = [];
                 this.n_spe      = [];         % number of sat per epoch
                 this.xyz        = [];         % approximate position of the receiver (XYZ geocentric)
                 
@@ -401,6 +407,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             this.sat.err_iono          = [];
             this.sat.solid_earth_corr  = [];
             this.sat.dtS               = [];
+            this.sat.ddtS              = [];
             this.sat.rel_clk_corr      = [];
             this.sat.tot               = [];
             this.sat.az                = [];
@@ -539,7 +546,8 @@ classdef Receiver_Work_Space < Receiver_Commons
                 std_pup = [];
             else
                 rf = Core.getReferenceFrame();
-                [coo, status, std_pup] = rf.getCoo(this.parent.getMarkerName4Ch, this.getCentralTime);
+%                 [coo, status, std_pup] = rf.getCoo(this.parent.getMarkerName4Ch, this.getCentralTime);
+                [coo, status, std_pup] = rf.getCoo(this.parent.getMarkerName4Ch, this.time);
             end
             if ~isempty(coo)
                 this.xyz = coo;
@@ -4820,9 +4828,11 @@ classdef Receiver_Work_Space < Receiver_Commons
                 [X,V] = Core.getCoreSky.coordInterpolate(this.time.getSubSet(idx),sat);
                 dtRel = -2 * sum(conj(X) .* V, 2) / (Core_Utils.V_LIGHT ^ 2); % Relativity correction (eccentricity velocity term)
             end
+            this.sat.rel_clk_corr = nan(size(this.sat.avail_index));
+            this.sat.rel_clk_corr(:,sat) = dtRel;
         end
         
-        function dtS = getDtS(this, sat)
+        function [dtS, ddtS] = getDtS(this, sat)
             % SYNTAX
             %   this.getDtS(time_rx)
             %
@@ -4839,21 +4849,29 @@ classdef Receiver_Work_Space < Receiver_Commons
             
             if numel(sat) > 1
                 dtS = nan(size(this.sat.avail_index, 1), numel(sat));
-                dtS = Core.getCoreSky.clockInterpolate(this.time, sat);
+                [dtS, ddtS] = Core.getCoreSky.clockInterpolate(this.time, sat);               
             else
                 idx = this.sat.avail_index(:,sat) > 0;
                 if sum(idx) > 0
-                    dtS = Core.getCoreSky.clockInterpolate(this.time.getSubSet(idx), sat);
+                    [dtS, ddtS] = Core.getCoreSky.clockInterpolate(this.time.getSubSet(idx), sat);
                     if any(isnan(dtS))
                         dtS = nan2zero(dtS);
                     end
+                    if any(isnan(ddtS))
+                        ddtS = nan2zero(ddtS);
+                    end
                 else
                     dtS = zeros(0,1);
+                    ddtS = zeros(0,1);
                 end
             end
+            this.sat.dtS = nan(size(this.sat.avail_index));
+            this.sat.ddtS = nan(size(this.sat.avail_index));
+            this.sat.dtS(:,sat) = dtS;
+            this.sat.ddtS(:,sat) = ddtS;
         end
         
-        function [XS_tx_r ,XS_tx] = getXSTxRot(this, go_id)
+        function [XS_tx_r ,XS_tx, VS_tx_r ,VS_tx] = getXSTxRot(this, go_id)
             % SYNTAX
             %   [XS_tx_r ,XS_tx] = this.getXSTxRot( sat)
             %
@@ -4867,20 +4885,24 @@ classdef Receiver_Work_Space < Receiver_Commons
             %   Compute satellite positions at transmission time and rotate them by the earth rotation
             %   occured during time of travel of the signal
             if nargin > 1
-                [XS_tx] = this.getXSTx(go_id);
+                [XS_tx, VS_tx] = this.getXSTx(go_id);
                 [XS_tx_r]  = this.earthRotationCorrection(XS_tx, go_id);
+                [VS_tx_r]  = this.earthRotationCorrection(VS_tx, go_id);
             else
                 n_sat = this.parent.getMaxSat;
                 XS_tx_r = zeros(this.time.length, n_sat, 3);
+                VS_tx_r = zeros(this.time.length, n_sat, 3);
                 for i = unique(this.go_id)'
-                    [XS_tx] = this.getXSTx(i);
+                    [XS_tx, VS_tx] = this.getXSTx(i);
                     [XS_tx_r_temp]  = this.earthRotationCorrection(XS_tx, i);
+                    [VS_tx_r_temp]  = this.earthRotationCorrection(VS_tx, i);
                     XS_tx_r(this.sat.avail_index(:,i) ,i ,:) = permute(XS_tx_r_temp, [1 3 2]);
+                    VS_tx_r(this.sat.avail_index(:,i) ,i ,:) = permute(VS_tx_r_temp, [1 3 2]);
                 end
             end
         end
         
-        function [XS_loc] = getXSLoc(this, go_id)
+        function [XS_loc, VS] = getXSLoc(this, go_id)
             % SYNTAX
             %   [XS_tx_r ,XS_tx] = this.getXSLoc( sat)
             %
@@ -4896,9 +4918,11 @@ classdef Receiver_Work_Space < Receiver_Commons
             n_epochs = this.time.length;
             if nargin > 1
                 sat_idx = this.sat.avail_index(:, go_id) > 0;
-                XS = this.getXSTxRot(go_id);
+                [XS, ~, vs] = this.getXSTxRot(go_id);
                 XS_loc = nan(n_epochs, 3);
+                VS = nan(n_epochs, 3);
                 XS_loc(sat_idx,:) = XS;
+                VS(sat_idx,:) = vs;
                 if size(this.xyz,1) == 1
                     XR = repmat(this.xyz, n_epochs, 1);
                 else
@@ -4912,13 +4936,14 @@ classdef Receiver_Work_Space < Receiver_Commons
                 cc = Core.getState.getConstellationCollector;
                 n_sat = cc.getMaxNumSat();
                 XS_loc = zeros(n_epochs, n_sat,3);
+                VS = zeros(n_epochs, n_sat,3);
                 for i = unique(this.go_id)'
-                    XS_loc(:,i ,:) = this.getXSLoc(i);
+                    [XS_loc(:,i ,:), VS(:, i, :)] = this.getXSLoc(i);
                 end
             end
         end
         
-        function [XS_tx] = getXSTx(this, sat)
+        function [XS_tx, VS_tx] = getXSTx(this, sat)
             % SYNTAX
             %   [XS_tx_frame , XS_rx_frame] = this.getXSTx()
             %
@@ -4933,7 +4958,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             %time_tx.addSeconds(); % rel clok neglegible
             sky = Core.getCoreSky;
             %sky.initSession(this.time.first, this.time.last, Core.getConstellationCollector);
-            [XS_tx] = sky.coordInterpolate(time_tx, sat);
+            [XS_tx, VS_tx] = sky.coordInterpolate(time_tx, sat);
             
             
             %                 [XS_tx(idx,:,:), ~] = Core.getCoreSky.coordInterpolate(time_tx);
@@ -6722,7 +6747,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             end
         end
         
-        function [range, XS_loc] = getSyntObs(this, go_id_list)
+        function [range, XS_loc, VS] = getSyntObs(this, go_id_list)
             %  get the estimate of one measurmenet based on the
             % current postion
             % INPUT
@@ -6744,17 +6769,20 @@ classdef Receiver_Work_Space < Receiver_Commons
                 end
             else
                 XS_loc = {};
+                VS = {};
                 for i = 1 : length(go_id_list)
                     go_id = go_id_list(i);
-                    XS_loc{i} = this.getXSLoc(go_id);
+                    [XS_loc{i}, VS{i}] = this.getXSLoc(go_id);
                     range_tmp = sqrt(sum(XS_loc{i}.^2,2));
                     range_tmp = range_tmp + nan2zero(this.sat.err_tropo(:, go_id));
                     
                     XS_loc{i}(isnan(range_tmp),:) = [];
+                    VS{i}(isnan(range_tmp),:) = [];
                     range(i,:) = nan2zero(range_tmp)';
                 end
                 if numel(go_id_list) == 1
                     XS_loc = XS_loc{1};
+                    VS = VS{i};
                 end
             end
         end
@@ -6909,7 +6937,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                     all_go_id = unique(this.go_id);
                 end
                 this.sat_cache.go_id = all_go_id;
-                [this.sat_cache.range, this.sat_cache.xs_loc_t] = this.getSyntObs(all_go_id);
+                [this.sat_cache.range, this.sat_cache.xs_loc_t, this.sat_cache.vs] = this.getSyntObs(all_go_id);
             end          
             sat_cache = this.sat_cache;
             
@@ -6918,10 +6946,11 @@ classdef Receiver_Work_Space < Receiver_Commons
                 if numel(id) < numel(go_id)
                     Core.getLogger.addWarning('Requesting satellite positions not in cache');
                     this.sat_cache.go_id = go_id;
-                    [this.sat_cache.range, this.sat_cache.xs_loc_t] = this.getSyntObs(go_id);                   
+                    [this.sat_cache.range, this.sat_cache.xs_loc_t, this.sat_cache.vs] = this.getSyntObs(go_id);                   
                 end
-                sat_cache = struct('go_id', go_id(id0), 'range', this.sat_cache.range(id,:), 'xs_loc_t', []);
+                sat_cache = struct('go_id', go_id(id0), 'range', this.sat_cache.range(id,:), 'xs_loc_t', [], 'vs', []);
                 sat_cache.xs_loc_t = this.sat_cache.xs_loc_t(id);
+                sat_cache.vs = this.sat_cache.vs(id);
             end
         end
         
@@ -7276,6 +7305,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             end            
         end
         
+        
         function updateAllAvailIndex(this)
             %  update avaliabilty of measurement on all
             % satellite based on all code and phase
@@ -7501,7 +7531,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             if nargin == 5 && ~isempty(mode) && mode == 2
                 this.dt_ph = this.dt_ph + this.dt;
             end
-            this.dt(:)  = 0; %zeros(size(this.dt_pr));
+%             this.dt(:)  = 0; %zeros(size(this.dt_pr));
             this.dt(id_out) = bk_dt;
         end
         
@@ -8061,7 +8091,14 @@ classdef Receiver_Work_Space < Receiver_Commons
                 go_id = unique(this.go_id);
             end
             XS = this.getXSTxRot(go_id);
-            [az, el] = this.computeAzimuthElevationXS(XS);
+            if size(this.xyz,1) > 1
+                XR = this.xyz(this.sat.avail_index(:,go_id),:);
+                [az, el] = this.computeAzimuthElevationXS(XS,XR);
+            else
+                [az, el] = this.computeAzimuthElevationXS(XS);
+            end
+            az = nan2zero(az);
+            el = nan2zero(el);
         end
         
         function [az, el] = computeAzimuthElevationXS(this, XS, XR)
@@ -10467,7 +10504,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             
             log = Core.getLogger;
             if this.isEmpty()
-                log.addError('Static positioning failed: the receiver object is empty');
+                log.addError('Dynamic positioning failed: the receiver object is empty');
             else
                 if isempty(this.id_sync)
                     this.id_sync = 1 : this.time.length;
@@ -10500,29 +10537,37 @@ classdef Receiver_Work_Space < Receiver_Commons
                 if ~this.isMultiFreq()
                     this.updateErrIono();
                 end
-                log.addMessage(log.indent('Improving estimation'))
-                this.codeDynamicPositioning(this.id_sync, 15);
-                
-                this.updateAllTOT();
-                log.addMessage(log.indent('Final estimation'))
-                [res, s0, ls] = this.codeDynamicPositioning(this.id_sync, 15);
-                log.addMessage(log.indent(sprintf('Estimation sigma02 %.3f m', s0) ))
-                this.quality_info.s0_ip = s0;
-                this.quality_info.n_epochs = ls.n_epochs;
-                this.quality_info.n_obs = size(ls.epoch, 1);
-                this.quality_info.n_out = sum(this.sat.outliers_ph_by_ph(:));
-                this.quality_info.n_sat = length(unique(ls.sat));
-                this.quality_info.n_sat_max = max(hist(unique(ls.epoch * 1000 + ls.sat), ls.n_epochs));
-                this.quality_info.fixing_ratio = 0;
-                
-                % Get sat number per epoch
-                this.generateNumSatPerEpochU1(ls ,res)
-
-                
-                % final estimation of time of flight
-                this.updateAllAvailIndex()
-                this.updateAllTOT();
-                [~, s0] = this.codeDynamicPositioning(this.id_sync, 15);
+                if ~(this.isFixed || this.isFixedPrepro)
+                    log.addMessage(log.indent('Improving estimation'))
+                    this.codeDynamicPositioning(sys_c, this.id_sync, 15);
+                    
+                    this.updateAllTOT();
+                    log.addMessage(log.indent('Final estimation'))
+                    [res, s0, ls] = this.codeDynamicPositioning(sys_c, this.id_sync, 15);
+                    log.addMessage(log.indent(sprintf('Estimation sigma02 %.3f m', s0) ))
+                    this.quality_info.s0_ip = s0;
+                    this.quality_info.n_epochs = ls.n_epochs;
+                    this.quality_info.n_obs = size(ls.epoch, 1);
+                    this.quality_info.n_out = sum(this.sat.outliers_ph_by_ph(:));
+                    this.quality_info.n_sat = length(unique(ls.sat));
+                    this.quality_info.n_sat_max = max(hist(unique(ls.epoch * 1000 + ls.sat), ls.n_epochs));
+                    this.quality_info.fixing_ratio = 0;
+                    
+                    % Get sat number per epoch
+                    this.generateNumSatPerEpochU1(ls ,res)
+                    
+                    
+                    % final estimation of time of flight
+                    this.updateAllAvailIndex()
+                    this.updateAllTOT();
+                    [~, s0] = this.codeDynamicPositioning(this.id_sync, 15);
+                else
+%                     obs_set.remUnderCutOff(cut_off);
+                    this.remUnderCutOff();
+                    this.updateAllAvailIndex()
+                    this.updateAllTOT();
+                    this.coarseDtEstimation();
+                end
             end
         end
         
@@ -10731,7 +10776,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             log = Core.getLogger;
             if this.isEmpty()
                 log.addError('Pre-Processing failed: the receiver object is empty');
-            else
+            else                
                 this.pp_status = false;
                 if nargin < 2 || isempty(sys_list)
                     cc = Core.getState.getConstellationCollector;
@@ -10756,11 +10801,14 @@ classdef Receiver_Work_Space < Receiver_Commons
                     this.importMeteoData();
                     this.initTropo();
                     
-                    if (this.state.isOutlierRejectionOn())
-                        this.remBadPrObs(150);
-                    end
+%                     if (this.state.isOutlierRejectionOn())
+%                         this.remBadPrObs(150);
+%                     end
                     this.remShortArc(this.state.getMinArc(this.time.getRate));
                     this.remEmptyObs();
+                    
+                    % store obs to old obs so that we can store original obs;
+                    this.old_obs = this.obs;
                     
                     if this.getNumPrEpochs == 0
                         log.addError('Pre-Processing failed: the receiver object is empty');
@@ -10778,7 +10826,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                         else
                             % update azimuth elevation
                             this.updateAzimuthElevation();
-                            this.remUnderCutOff();
+                            this.remUnderCutOff(); % this part needs to update the avail_idex?
                             this.setAvIdx2Visibility();
                             this.meteo_data = [];
                             this.importMeteoData(); % now with more precise coordinates

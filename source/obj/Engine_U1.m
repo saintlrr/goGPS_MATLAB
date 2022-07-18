@@ -527,6 +527,7 @@ classdef Engine_U1 < Exportable
             
             if dynamic
                 n_coo = n_coo_par * n_epochs;
+                n_pos = length(unique(pos_idx_vec));
             else
                 if isempty(pos_idx_vec)
                     n_coo = n_coo_par;

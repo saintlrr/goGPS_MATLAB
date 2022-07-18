@@ -199,26 +199,45 @@ classdef Core_Reference_Frame < handle
                         end_validity_time = this.end_validity_epoch.getSubSet(idx_sta).getGpsTime();
                         if nargin > 2 && not(isempty(epoch))
                             epoch_gps = epoch.getGpsTime();
-                            idx_sta2 = st_validity_time < epoch_gps & end_validity_time > epoch_gps;
-                            if not(any(idx_sta2))
-                                log = Core.getLogger;
-                                log.addMessage(log.indent('No valid a-priori coordinate found.'));
+                            xyz = nan(length(epoch_gps), 3);
+                            std_pup = nan(length(epoch_gps),2);
+                            for i  = 1 : length(epoch_gps)
+                                idx_sta2 = st_validity_time <= epoch_gps(i) & end_validity_time > epoch_gps(i);
+                                if not(any(idx_sta2))
+                                    log = Core.getLogger;
+                                    log.addMessage(log.indent('No valid a-priori coordinate found.'));
+                                end
+                                idx_sta1 = idx_sta(idx_sta2);
+                                if not(isempty(idx_sta1))
+                                    idx_sta1 = idx_sta1(end); % take only the last coordinate matching
+                                    
+                                    % remove velocity
+                                    if nargin > 2 && not(isempty(epoch))
+                                        dt = epoch.getEpoch(i) - this.start_validity_epoch.getEpoch(idx_sta1);
+                                        xyz(i,:) = this.xyz(idx_sta1,:) + (this.vxvyvz(idx_sta1,:)' * (dt./(365.25 * 86400))')';
+                                    else
+                                        xyz(i,:) = this.xyz(idx_sta1,:);
+                                    end
+                                    
+                                    is_valid = true;
+                                    std_pup(i,:) = this.std_pup(idx_sta1,:);
+                                end
                             end
-                            idx_sta = idx_sta(idx_sta2);
-                        end
-                        if not(isempty(idx_sta))
-                            idx_sta = idx_sta(end); % take only the last coordinate matching
-                            
-                            % remove velocity
-                            if nargin > 2 && not(isempty(epoch))
-                                dt = epoch - this.start_validity_epoch.getEpoch(idx_sta);
-                                xyz = this.xyz(idx_sta,:) + (this.vxvyvz(idx_sta,:)' * (dt./(365.25 * 86400))')';
-                            else
-                                xyz = this.xyz(idx_sta,:);
+                        else
+                            if not(isempty(idx_sta))
+                                idx_sta = idx_sta(end); % take only the last coordinate matching
+                                
+                                % remove velocity
+                                if nargin > 2 && not(isempty(epoch))
+                                    dt = epoch - this.start_validity_epoch.getEpoch(idx_sta);
+                                    xyz = this.xyz(idx_sta,:) + (this.vxvyvz(idx_sta,:)' * (dt./(365.25 * 86400))')';
+                                else
+                                    xyz = this.xyz(idx_sta,:);
+                                end
+                                
+                                is_valid = true;
+                                std_pup = this.std_pup(idx_sta,:);
                             end
-                            
-                            is_valid = true;
-                            std_pup = this.std_pup(idx_sta,:);
                         end
                     end
                 end

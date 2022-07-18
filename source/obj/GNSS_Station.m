@@ -91,12 +91,12 @@ classdef GNSS_Station < handle
             % SYNTAX
             %   this = GNSS_Static(static)
             this.work = Receiver_Work_Space(this);
-            this.out = Receiver_Output(this);
-            if nargin >= 2 && ~isempty(flag_static)
-                this.static = logical(flag_static);
-            end
+            this.out = Receiver_Output(this);            
             this.init();
             this.resetInfo();
+            if nargin >= 1 && ~isempty(flag_static)
+                this.static = logical(flag_static);
+            end
         end
 
         function importRinexLegacy(this, rinex_file_name, rate, sys_c_list, otype_list)
