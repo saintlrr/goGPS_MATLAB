@@ -1,5 +1,7 @@
 % read reftable
-refFilePath = 'E:\Software\dataset\UrbanNav\HongKong\HK_20190428\reference.csv';
+% refFilePath = 'E:\Software\dataset\UrbanNav\HongKong\HK_20190428\reference.csv';
+[file, path] = uigetfile('*.csv');
+refFilePath = fullfile(path, file);
 refTable = readRefFile(refFilePath);
 
 varTypes = {'string', 'double', 'double', 'double', 'string', ...
@@ -51,7 +53,9 @@ for i = 1 : size(CRD, 1)
     datestr(CRD.startTime(i), 'yyyy-mm-dd HH:MM:SS.FFF'), ...
     datestr(CRD.endTime(i), 'yyyy-mm-dd HH:MM:SS.FFF'));
 end
-CRDFilePath = 'E:\Software\PPP\goGPS\goGPS_MATLAB\data\project\default_DD\station\CRD\stations.crd';
+% CRDFilePath = 'E:\Software\PPP\goGPS\goGPS_MATLAB\data\project\default_DD\station\CRD\stations.crd';
+[file,path] = uiputfile('../data/station/CRD/urbanPos.crd');
+CRDFilePath = fullfile(path, file);
 fid = fopen(CRDFilePath, 'Wb');
 fwrite(fid, str, 'char');
 fclose(fid);
