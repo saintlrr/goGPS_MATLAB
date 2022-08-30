@@ -1,5 +1,7 @@
 output = table();
 st = [];
+% obscode = 
+
 for i = 1: size(rec,2)
     work = rec(1,i).work;
     work.updateAllAvailIndex();
@@ -32,24 +34,32 @@ for i = 1: size(rec,2)
             L2_idx = contains(string(obs_code(obs_col, :)),'L2');
             D2_idx = contains(string(obs_code(obs_col, :)),'D2');
             S2_idx = contains(string(obs_code(obs_col, :)),'S2');
-            if(any(C1_idx) && any(L1_idx) && any(D1_idx) && any(S1_idx) && ...
-                    any(C2_idx) && any(L2_idx) && any(D2_idx) && any(S2_idx))
+%             if(any(C1_idx) && any(L1_idx) && any(D1_idx) && any(S1_idx) ...
+%                     && any(C2_idx) && any(L2_idx) && any(D2_idx) && any(S2_idx))
+            if(any(C1_idx) && any(L1_idx) && any(D1_idx) && any(S1_idx))
                 element = table();
                 element.time = epoch(t);
                 element.epoch = seconds(epoch(t) - st);
                 element.satId = validSat(j);
-                %             element.P1 = old_obs(obs_col(find(C1_idx, 1)), t);
-                %             element.L1 = old_obs(obs_col(find(L1_idx, 1)), t);
+%                             element.P1 = old_obs(obs_col(find(C1_idx, 1)), t);
+%                             element.L1 = old_obs(obs_col(find(L1_idx, 1)), t);
                 element.P1_corr = obs(obs_col(find(C1_idx, 1)), t);
                 element.L1_corr = obs(obs_col(find(L1_idx, 1)), t);
                 element.D1 = obs(obs_col(find(D1_idx,1)), t);
                 element.S1 = obs(obs_col(find(S1_idx,1)), t);
-                %             element.P2 = old_obs(obs_col(find(C2_idx,1)), t);
-                %             element.L2 = old_obs(obs_col(find(L2_idx,1)), t);
-                element.P2_corr = obs(obs_col(find(C2_idx,1)), t);
-                element.L2_corr = obs(obs_col(find(L2_idx,1)), t);
-                element.D2 = obs(obs_col(find(D2_idx,1)), t);
-                element.S2 = obs(obs_col(find(S2_idx,1)), t);
+%                             element.P2 = old_obs(obs_col(find(C2_idx,1)), t);
+%                             element.L2 = old_obs(obs_col(find(L2_idx,1)), t);
+                if(any(C2_idx) && any(L2_idx) && any(D2_idx) && any(S2_idx))
+                    element.P2_corr = obs(obs_col(find(C2_idx,1)), t);
+                    element.L2_corr = obs(obs_col(find(L2_idx,1)), t);
+                    element.D2 = obs(obs_col(find(D2_idx,1)), t);
+                    element.S2 = obs(obs_col(find(S2_idx,1)), t);
+                else
+                    element.P2_corr = 0;
+                    element.L2_corr = 0;
+                    element.D2 = 0;
+                    element.S2 = 0;
+                end
                 element.dts = dtS(t, validSat(j));
                 element.ddts = ddtS(t, validSat(j));
                 element.rel_clk_corr = rel_clk_corr(t, validSat(j));

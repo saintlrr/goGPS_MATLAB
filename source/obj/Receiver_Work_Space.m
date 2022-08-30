@@ -4671,7 +4671,7 @@ classdef Receiver_Work_Space < Receiver_Commons
             %
             % SYNTAX
             %   [lon, lat, h] = this.getGeodCoord()
-            if isempty(this.lat) ||  isempty(this.lat) ||  isempty(this.h_ellips)
+            if isempty(this.lon) ||  isempty(this.lat) ||  isempty(this.h_ellips)
                 this.updateCoordinates();
             end
             lon = this.lon;
@@ -7526,12 +7526,15 @@ classdef Receiver_Work_Space < Receiver_Commons
             else
                 dt_ph = dt_pr;
             end
-            this.applyDtRec(dt_pr, dt_ph)
+%             this.applyDtRec(dt_pr, dt_ph) % dt_pr will ignore the id_fill
+%             element so using the this.dt
+            this.applyDtRec(this.dt, dt_ph);
             %this.dt_pr = this.dt_pr + this.dt;
             if nargin == 5 && ~isempty(mode) && mode == 2
                 this.dt_ph = this.dt_ph + this.dt;
             end
-%             this.dt(:)  = 0; %zeros(size(this.dt_pr));
+%             this.dt(:)  = 0; %zeros(size(this.dt_pr)); comment for store
+%             dt
             this.dt(id_out) = bk_dt;
         end
         
@@ -10567,6 +10570,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                     this.updateAllAvailIndex()
                     this.updateAllTOT();
                     this.coarseDtEstimation();
+                    s0 = 0.1;
                 end
             end
         end
