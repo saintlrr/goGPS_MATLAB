@@ -63,7 +63,7 @@ for i = 1: size(rec,2)
                 element.dts = dtS(t, validSat(j));
                 element.ddts = ddtS(t, validSat(j));
                 element.rel_clk_corr = rel_clk_corr(t, validSat(j));
-                element.dt = work.dt(t);
+%                 element.dt = work.dt(t);
                 element.az = sat.az(t, validSat(j));
                 element.el = sat.el(t, validSat(j));
                 id = sat_cache.go_id == validSat(j);

@@ -10517,7 +10517,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                 % setUPSA
                 cc = Core.getState.getConstellationCollector;
                 obs_set = Observation_Set();
-                if this.isMultiFreq() %% case multi frequency
+                if 0 & this.isMultiFreq() %% case multi frequency
                     for sys_c = cc.sys_c
                         obs_set.merge(this.getPrefIonoFree('C', sys_c));
                     end
@@ -10569,7 +10569,7 @@ classdef Receiver_Work_Space < Receiver_Commons
                     this.remUnderCutOff();
                     this.updateAllAvailIndex()
                     this.updateAllTOT();
-                    this.coarseDtEstimation();
+%                     this.coarseDtEstimation();
                     s0 = 0.1;
                 end
             end
@@ -10841,6 +10841,13 @@ classdef Receiver_Work_Space < Receiver_Commons
                             %                         this.codeStaticPositioning();
                             %                         this.updateAllTOT();
                             %                         this.codeStaticPositioning();
+                            if this.isFixed
+                                this.shiftToNominal();
+                                this.updateAllAvailIndex();
+                                this.updateAllTOT();
+                                this.updateAzimuthElevation();
+                                return;
+                            end
                             
                             % if the clock is stable I can try to smooth more => this.smoothAndApplyDt([0 this.length/2]);
                             if isempty(this.dt_ip)
