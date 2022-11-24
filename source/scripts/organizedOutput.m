@@ -14,9 +14,7 @@ for i = 1: size(rec,2)
     dtS = work.sat.dtS;
     ddtS = work.sat.ddtS;
     epoch = datetime(work.time.mat_time,'ConvertFrom','datenum');
-    if i == 1 || isempty(st)
-        st = epoch(1);
-    end
+    
     %     [dts, ddts] = work.getDtS();
     rel_clk_corr = work.sat.rel_clk_corr;
     sat = work.sat;
@@ -37,6 +35,9 @@ for i = 1: size(rec,2)
 %             if(any(C1_idx) && any(L1_idx) && any(D1_idx) && any(S1_idx) ...
 %                     && any(C2_idx) && any(L2_idx) && any(D2_idx) && any(S2_idx))
             if(any(C1_idx) && any(L1_idx) && any(D1_idx) && any(S1_idx))
+                if i == 1 && isempty(st)
+                    st = epoch(t);
+                end
                 element = table();
                 element.time = epoch(t);
                 element.epoch = seconds(epoch(t) - st);
